@@ -138,8 +138,8 @@ int main() {
     char *line;
     
     // Configure readline
-    rl_bind_textvar("editing-mode", "vi");
-    using_history();
+    // rl_bind_textvar("editing-mode", "vi");
+    // using_history();
 
     printf("Welcome to Plaid Shell!\n");
 
