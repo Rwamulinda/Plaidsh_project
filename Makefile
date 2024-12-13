@@ -11,8 +11,6 @@ plaidsh: $(OBJS) plaidsh.o
 	gcc $(LDFLAGS) $^ $(LIBS) -o $@
 
 # Linking the test executable
-plaidsh_test: $(OBJS) plaidsh_test.o # Use plaidsh_test.o and existing object files
-	gcc $(LDFLAGS) $^ $(LIBS) -o $@
 
 # Rule for plaidsh_test.o
 %.o: %.c $(HDRS)
