@@ -211,6 +211,15 @@ CList TOK_tokenize_input(const char *input, char *errmsg, size_t errmsg_sz)
         if (temp_idx > 0)
         {
             temp[temp_idx] = '\0';
+
+            // Validate token creation
+            token.value = strdup(temp);
+            if (token.value == NULL)
+            {
+              snprintf(errmsg, errmsg_sz, "Memory allocation failed");
+              free_token_values(tokens); // Free all previously allocated tokens
+              return NULL;
+            }
             
             // Determine token type
             if (is_quoted || had_quote)
@@ -223,7 +232,7 @@ CList TOK_tokenize_input(const char *input, char *errmsg, size_t errmsg_sz)
             }
             
             token.value = strdup(temp);
-            CL_append(tokens, token);
+            //CL_append(tokens, token);
         }
     }
 
