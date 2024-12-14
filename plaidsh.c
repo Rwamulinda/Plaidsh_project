@@ -150,6 +150,10 @@ int execute_pipeline(Pipeline *pipeline) {
 int main() {
     char *line;
     
+    // Configure readline
+    // rl_bind_textvar("editing-mode", "vi");
+    // using_history();
+
     printf("Welcome to Plaid Shell!\n");
 
     while ((line = readline("#? ")) != NULL) {
@@ -174,18 +178,14 @@ int main() {
             continue;
         }
 
-        // Get first token
+        // Special built-in commands first
         Token first_token = TOK_next(tokens);
-
-        // Simple exit check - exit if first token is "exit"
-        if (strcmp(first_token.value, "exit") == 0) {
-            printf("Exiting Plaid Shell. Goodbye!\n");
-            free_token_values(tokens);
-            free(line);
-            break;
+        int  should_exit = 0;
+        if (strcmp(first_token.value, "exit") == 0 || 
+            strcmp(first_token.value, "quit") == 0) {
+            should_exit = 1;
         }
 
-        // Existing command handling for cd, pwd, author
         if (strcmp(first_token.value, "cd") == 0) {
             TOK_consume(tokens);
             Token dir_token = TOK_next(tokens);
@@ -210,16 +210,22 @@ int main() {
             continue;
         }
 
-        // Parse and execute pipeline for other commands
-        Pipeline *pipeline = parse_tokens(tokens);
-        if (pipeline) {
-            execute_pipeline(pipeline);
-            pipeline_free(pipeline);
+        // Parse and execute pipeline
+        if (!should_exit) {
+            Pipeline *pipeline = parse_tokens(tokens);
+            if (pipeline) {
+                execute_pipeline(pipeline);
+                pipeline_free(pipeline);
+        }
         }
 
         // Cleanup
         free_token_values(tokens);
         free(line);
+
+        if (should_exit) {
+            break;
+        }
     }
 
     return 0;
