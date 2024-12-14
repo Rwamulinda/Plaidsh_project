@@ -189,10 +189,6 @@ int main()
 {
     char *line;
 
-    // Configure readline
-    // rl_bind_textvar("editing-mode", "vi");
-    // using_history();
-
     printf("Welcome to Plaid Shell!\n");
 
     while ((line = readline("#? ")) != NULL)
@@ -222,61 +218,64 @@ int main()
         }
 
         // Safely get first token
-        Token first_token = {0}; // Initialize to zero
-        int should_exit = 0;
+        Token first_token = TOK_next(tokens);
 
-        // Safely check first token
-        if (tokens != NULL)
+        if (first_token.value == NULL)
         {
-            first_token = TOK_next(tokens);
+            free_token_values(tokens);
+            free(line);
+            continue;
+        }
 
-            if (first_token.value != NULL)
-            {
-                should_exit = (strcmp(first_token.value, "exit") == 0 ||
-                               strcmp(first_token.value, "quit") == 0);
-            }
+        // Debug: Print first token
+        printf("First token: %s\n", first_token.value);
+
+        int should_exit = (strcmp(first_token.value, "exit") == 0 ||
+                           strcmp(first_token.value, "quit") == 0);
+
+        if (should_exit)
+        {
+            free_token_values(tokens);
+            free(line);
+            break;
         }
 
         // Handle built-in commands
-        if (first_token.value != NULL)
+        if (strcmp(first_token.value, "cd") == 0)
         {
-            if (strcmp(first_token.value, "cd") == 0)
+            TOK_consume(tokens);
+            Token dir_token = TOK_next(tokens);
+            char *argv[2] = {"cd", dir_token.value};
+            do_cd(dir_token.value ? 2 : 1, argv);
+        }
+        else if (strcmp(first_token.value, "pwd") == 0)
+        {
+            do_pwd();
+        }
+        else if (strcmp(first_token.value, "author") == 0)
+        {
+            do_author();
+        }
+        else
+        {
+            // For other commands, attempt pipeline execution
+            Pipeline *pipeline = parse_tokens(tokens);
+            if (pipeline)
             {
-                TOK_consume(tokens);
-                Token dir_token = TOK_next(tokens);
-                char *argv[2] = {"cd", dir_token.value};
-                do_cd(dir_token.value ? 2 : 1, argv);
+                int result = execute_pipeline(pipeline);
+                printf("Pipeline execution result: %d\n", result);
+                pipeline_free(pipeline);
             }
-            else if (strcmp(first_token.value, "pwd") == 0)
+            else
             {
-                do_pwd();
-            }
-            else if (strcmp(first_token.value, "author") == 0)
-            {
-                do_author();
-            }
-            else if (!should_exit)
-            {
-                Pipeline *pipeline = parse_tokens(tokens);
-                if (pipeline)
-                {
-                    execute_pipeline(pipeline);
-                    pipeline_free(pipeline);
-                }
-                else
-                {
-                    fprintf(stderr, "Failed to parse tokens\n");
-                }
+                fprintf(stderr, "Failed to parse tokens\n");
             }
         }
 
         // Cleanup
         free_token_values(tokens);
         free(line);
-
-        if (should_exit)
-        {
-            break;
-        }
     }
+
+    return 0;
 }
