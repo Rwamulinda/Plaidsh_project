@@ -135,12 +135,12 @@ int execute_pipeline(Pipeline *pipeline) {
             if (child_exit_status != 0) {
                 fprintf(stderr, "Child %d exited with status %d\n", 
                         child_pids[i], child_exit_status);
-                exit_status = child_exit_status;
+                exit_status = 2;
             }
         } else if (WIFSIGNALED(status)) {
             fprintf(stderr, "Child %d killed by signal %d\n", 
                     child_pids[i], WTERMSIG(status));
-            exit_status = 1;
+            exit_status = 2;
         }
     }
 
@@ -180,11 +180,10 @@ int main() {
 
         // Special built-in commands first
         Token first_token = TOK_next(tokens);
+        int  should_exit = 0;
         if (strcmp(first_token.value, "exit") == 0 || 
             strcmp(first_token.value, "quit") == 0) {
-            free_token_values(tokens);
-            free(line);
-            break;
+            should_exit = 1;
         }
 
         if (strcmp(first_token.value, "cd") == 0) {
@@ -212,15 +211,22 @@ int main() {
         }
 
         // Parse and execute pipeline
-        Pipeline *pipeline = parse_tokens(tokens);
-        if (pipeline) {
-            execute_pipeline(pipeline);
-            pipeline_free(pipeline);
+        if (!should_exit) {
+            Pipeline *pipeline = parse_tokens(tokens);
+            if (pipeline) {
+                execute_pipeline(pipeline);
+                pipeline_free(pipeline);
+        }
         }
 
         // Cleanup
         free_token_values(tokens);
+        CL_free(tokens)
         free(line);
+
+        if (should_exit) {
+            break;
+        }
     }
 
     return 0;
