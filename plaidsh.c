@@ -189,33 +189,47 @@ int main() {
             Token dir_token = TOK_next(tokens);
             char *argv[2] = {"cd", dir_token.value};
             do_cd(dir_token.value ? 2 : 1, argv);
-            free_token_values(tokens);
-            free(line);
-            continue;
-        }
-
-        if (strcmp(first_token.value, "pwd") == 0) {
+        } else if (strcmp(first_token.value, "pwd") == 0) {
             do_pwd();
-            free_token_values(tokens);
-            free(line);
-            continue;
-        }
-
-        if (strcmp(first_token.value, "author") == 0) {
+        } else if (strcmp(first_token.value, "author") == 0) {
             do_author();
-            free_token_values(tokens);
-            free(line);
-            continue;
-        }
-
-        // Parse and execute pipeline
-        if (!should_exit) {
+        } else if (!should_exit) {    
             Pipeline *pipeline = parse_tokens(tokens);
             if (pipeline) {
                 execute_pipeline(pipeline);
                 pipeline_free(pipeline);
+            } else {
+                fprintf(stderr, "Failed to parse tokens\n");
+            }
         }
-        }
+
+        //     free_token_values(tokens);
+        //     free(line);
+        //     continue;
+        // }
+
+        // if (strcmp(first_token.value, "pwd") == 0) {
+        //     do_pwd();
+        //     free_token_values(tokens);
+        //     free(line);
+        //     continue;
+        // }
+
+        // if (strcmp(first_token.value, "author") == 0) {
+        //     do_author();
+        //     free_token_values(tokens);
+        //     free(line);
+        //     continue;
+        // }
+
+        // // Parse and execute pipeline
+        // if (!should_exit) {
+        //     Pipeline *pipeline = parse_tokens(tokens);
+        //     if (pipeline) {
+        //         execute_pipeline(pipeline);
+        //         pipeline_free(pipeline);
+        // }
+        // }
 
         // Cleanup
         free_token_values(tokens);
