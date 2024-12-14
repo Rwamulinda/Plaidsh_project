@@ -18,12 +18,22 @@ char **perform_globbing(char *pattern) {
         expanded_args[count] = NULL;
         globfree(&globresult);
     } else {
+        // Single expansion with duplicate of original pattern
         expanded_args = malloc(2 * sizeof(char *));
         expanded_args[0] = strdup(pattern);
         expanded_args[1] = NULL;
     }
 
     return expanded_args;
+}
+
+void free_expanded_args(char **expanded_args) {
+    if (expanded_args) {
+        for (int i = 0; expanded_args[i] != NULL; i++) {
+            free(expanded_args[i]);
+        }
+        free(expanded_args);
+    }
 }
 
 Pipeline *parse_tokens(CList tokens) {

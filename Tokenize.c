@@ -97,6 +97,7 @@ CList TOK_tokenize_input(const char *input, char *errmsg, size_t errmsg_sz)
 
     if (input == NULL) {
         snprintf(errmsg, errmsg_sz, "Null input provided");
+        CL_free(tokens);  // Free the list if input is NULL
         return NULL;
     }
 
@@ -155,7 +156,7 @@ CList TOK_tokenize_input(const char *input, char *errmsg, size_t errmsg_sz)
                     if (input[i + 1] == '\0') 
                     {
                         snprintf(errmsg, errmsg_sz, "Unterminated quote");
-                        free_token_values(tokens);
+                        free_token_values(tokens);  // Free all allocated tokens
                         return NULL;
                     }
                     
@@ -176,7 +177,7 @@ CList TOK_tokenize_input(const char *input, char *errmsg, size_t errmsg_sz)
                 if (input[i + 1] == '\0')
                 {
                     snprintf(errmsg, errmsg_sz, "Illegal escape character");
-                    free_token_values(tokens);
+                    free_token_values(tokens);  // Free all allocated tokens
                     return NULL;
                 }
 
@@ -193,7 +194,7 @@ CList TOK_tokenize_input(const char *input, char *errmsg, size_t errmsg_sz)
                     }
                     
                     snprintf(errmsg, errmsg_sz, "Illegal escape character '\\%c'", input[i + 1]);
-                    free_token_values(tokens);
+                    free_token_values(tokens);  // Free all allocated tokens
                     return NULL;
                 }
                 temp[temp_idx++] = escaped;

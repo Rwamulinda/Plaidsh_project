@@ -100,9 +100,13 @@ int execute_pipeline(Pipeline *pipeline) {
             // Execute command
             execvp(pipeline->commands[i].argv[0], pipeline->commands[i].argv);
             
-            // If execvp fails
-            perror(pipeline->commands[i].argv[0]);
-            exit(1);
+            // If execvp fails, print a more specific error
+            if (errno == ENOENT) {
+                fprintf(stderr, "%s: Command not found\n", pipeline->commands[i].argv[0]);
+            } else {
+                perror(pipeline->commands[i].argv[0]);
+            }
+            exit(127);  // Standard exit code for command not found
         }
     }
 
@@ -122,16 +126,25 @@ int execute_pipeline(Pipeline *pipeline) {
 
     // Wait for children
     int status;
+    int exit_status = 0;
     for (int i = 0; i < pipeline->num_commands; i++) {
         waitpid(child_pids[i], &status, 0);
 
-        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-            fprintf(stderr, "Child %d exited with status %d\n", 
-                    child_pids[i], WEXITSTATUS(status));
+        if (WIFEXITED(status)) {
+            int child_exit_status = WEXITSTATUS(status);
+            if (child_exit_status != 0) {
+                fprintf(stderr, "Child %d exited with status %d\n", 
+                        child_pids[i], child_exit_status);
+                exit_status = child_exit_status;
+            }
+        } else if (WIFSIGNALED(status)) {
+            fprintf(stderr, "Child %d killed by signal %d\n", 
+                    child_pids[i], WTERMSIG(status));
+            exit_status = 1;
         }
     }
 
-    return 0;
+    return exit_status;
 }
 
 int main() {
