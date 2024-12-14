@@ -221,7 +221,7 @@ int main() {
 
         // Cleanup
         free_token_values(tokens);
-        CL_free(tokens)
+        CL_free(tokens);
         free(line);
 
         if (should_exit) {
