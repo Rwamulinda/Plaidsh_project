@@ -2,6 +2,7 @@
 #include <string.h>
 #include <glob.h>
 #include "parse.h"
+#include "pipeline.h"
 
 char **perform_globbing(char *pattern) {
     glob_t globresult;
@@ -14,6 +15,7 @@ char **perform_globbing(char *pattern) {
         expanded_args = malloc((globresult.gl_pathc + 1) * sizeof(char *));
         for (size_t i = 0; i < globresult.gl_pathc; i++) {
             expanded_args[count++] = strdup(globresult.gl_pathv[i]);
+            
         }
         expanded_args[count] = NULL;
         globfree(&globresult);
@@ -45,12 +47,13 @@ Pipeline *parse_tokens(CList tokens) {
 
     while (TOK_next_type(tokens) != TOK_END) {
         Token token = TOK_next(tokens);
+        char **expanded_args = NULL;
 
         switch (token.type) {
             case TOK_WORD:
             case TOK_QUOTED_WORD: {
                 // Perform globbing for non-quoted words
-                char **expanded_args = (token.type == TOK_WORD) ? 
+                 expanded_args = (token.type == TOK_WORD) ? 
                     perform_globbing(token.value) : malloc(2 * sizeof(char *));
                 
                 if (token.type == TOK_QUOTED_WORD) {

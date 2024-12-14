@@ -180,11 +180,9 @@ int main() {
 
         // Special built-in commands first
         Token first_token = TOK_next(tokens);
-        int  should_exit = 0;
-        if (strcmp(first_token.value, "exit") == 0 || 
-            strcmp(first_token.value, "quit") == 0) {
-            should_exit = 1;
-        }
+        int  should_exit = (strcmp(first_token.value, "exit") == 0 || 
+            strcmp(first_token.value, "quit") == 0);
+        
 
         if (strcmp(first_token.value, "cd") == 0) {
             TOK_consume(tokens);
