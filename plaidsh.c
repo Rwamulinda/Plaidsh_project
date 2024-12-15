@@ -10,13 +10,44 @@
 #include "parse.h"
 #include "pipeline.h"
 
+
+// Function implementations before they are used
+void do_author(void) {
+    printf("Author: Uwase Pauline \n");
+}
+
+int do_cd(const char *path) {
+    if (path == NULL) {
+        // Handle case of no path (go to home directory)
+        path = getenv("HOME");
+    }
+    
+    if (chdir(path) != 0) {
+        perror("cd");
+        return 1;
+    }
+    return 0;
+}
+
+void do_pwd(void) {
+    char cwd[1024];
+    if (getcwd(cwd, sizeof(cwd)) != NULL) {
+        printf("%s\n", cwd);
+    } else {
+        perror("pwd");
+    }
+}
+
+
 // Add exit as a built-in command
 int do_exit(int status) {
     exit(status);
     return 0; // Never reached, but keeps compiler happy
 }
 
-// Existing built-in functions (do_author, do_cd, do_pwd) remain the same
+
+
+// Add exit as a built-in command
 
 // Check if a command is a built-in
 int is_builtin(const char *command) {
