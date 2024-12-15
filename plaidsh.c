@@ -2,102 +2,111 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <errno.h>
 #include <sys/wait.h>
 #include <readline/readline.h>
 #include <readline/history.h>
-#include <errno.h>
-
 #include "Tokenize.h"
-#include "pipeline.h"
 #include "parse.h"
+#include "pipeline.h"
 
-// Builtin command implementations
-int do_cd(int argc, char **argv) {
-    if (argc == 1) {
-        // Change to home directory if no argument
-        const char *home = getenv("HOME");
-        if (home == NULL) {
-            fprintf(stderr, "cd: Could not determine home directory\n");
+// Add exit as a built-in command
+int do_exit(int status) {
+    exit(status);
+    return 0; // Never reached, but keeps compiler happy
+}
+
+// Existing built-in functions (do_author, do_cd, do_pwd) remain the same
+
+// Check if a command is a built-in
+int is_builtin(const char *command) {
+    const char *builtin_commands[] = {"author", "cd", "pwd", "exit"};
+    for (size_t i = 0; i < sizeof(builtin_commands)/sizeof(builtin_commands[0]); i++) {
+        if (strcmp(command, builtin_commands[i]) == 0) {
             return 1;
         }
-        return chdir(home);
-    } else {
-        return chdir(argv[1]);
     }
+    return 0;
 }
 
-int do_pwd() {
-    char cwd[1024];
-    if (getcwd(cwd, sizeof(cwd)) != NULL) {
-        printf("%s\n", cwd);
+// Execute built-in commands
+int execute_builtin(Command *cmd) {
+    if (strcmp(cmd->argv[0], "author") == 0) {
+        do_author();
         return 0;
-    } else {
-        perror("pwd");
-        return 1;
+    } else if (strcmp(cmd->argv[0], "cd") == 0) {
+        return do_cd(cmd->argv[1]);
+    } else if (strcmp(cmd->argv[0], "pwd") == 0) {
+        do_pwd();
+        return 0;
+    } else if (strcmp(cmd->argv[0], "exit") == 0) {
+        // Exit with status 0 by default, or use provided status
+        int status = cmd->argv[1] ? atoi(cmd->argv[1]) : 0;
+        do_exit(status);
     }
-}
-
-void do_author() {
-    printf("Uwase Pauline\n");
+    return -1;
 }
 
 int execute_pipeline(Pipeline *pipeline) {
-    int pipes[pipeline->num_commands - 1][2];
-    pid_t child_pids[pipeline->num_commands];
+    if (!pipeline || pipeline->command_count == 0) {
+        return -1;
+    }
 
-    // Setup pipes between commands
-    for (int i = 0; i < pipeline->num_commands - 1; i++) {
+    // Handle single built-in command case
+    if (pipeline->command_count == 1 && is_builtin(pipeline->commands[0].argv[0])) {
+        return execute_builtin(&pipeline->commands[0]);
+    }
+
+    // Prepare for pipeline execution
+    int pipes[pipeline->command_count - 1][2];
+    pid_t pids[pipeline->command_count];
+
+    // Create pipes between commands
+    for (int i = 0; i < pipeline->command_count - 1; i++) {
         if (pipe(pipes[i]) == -1) {
             perror("pipe");
-            return 1;
+            return -1;
         }
     }
 
-    for (int i = 0; i < pipeline->num_commands; i++) {
-        child_pids[i] = fork();
+    // Fork and execute each command
+    for (int i = 0; i < pipeline->command_count; i++) {
+        pids[i] = fork();
 
-        if (child_pids[i] == -1) {
+        if (pids[i] == -1) {
             perror("fork");
-            return 1;
+            return -1;
         }
 
-        if (child_pids[i] == 0) {
-            // Child process
+        if (pids[i] == 0) {  // Child process
+            // Handle input redirection
             if (i > 0) {
-                // Not first command, redirect stdin from previous pipe
                 if (dup2(pipes[i-1][0], STDIN_FILENO) == -1) {
-                    perror("dup2 stdin");
-                    exit(1);
-                }
-            } else if (pipeline->input_file != stdin) {
-                // Redirect input from specified file
-                if (dup2(fileno(pipeline->input_file), STDIN_FILENO) == -1) {
-                    perror("dup2 input file");
-                    exit(1);
+                    perror("dup2 input");
+                    exit(EXIT_FAILURE);
                 }
             }
 
-            if (i < pipeline->num_commands - 1) {
-                // Not last command, redirect stdout to next pipe
+            // Handle output redirection
+            if (i < pipeline->command_count - 1) {
                 if (dup2(pipes[i][1], STDOUT_FILENO) == -1) {
-                    perror("dup2 stdout");
-                    exit(1);
-                }
-            } else if (pipeline->output_file != stdout) {
-                // Redirect output to specified file
-                if (dup2(fileno(pipeline->output_file), STDOUT_FILENO) == -1) {
-                    perror("dup2 output file");
-                    exit(1);
+                    perror("dup2 output");
+                    exit(EXIT_FAILURE);
                 }
             }
 
-            // Close all pipe file descriptors in child
-            for (int j = 0; j < pipeline->num_commands - 1; j++) {
+            // Close all pipe fds
+            for (int j = 0; j < pipeline->command_count - 1; j++) {
                 close(pipes[j][0]);
                 close(pipes[j][1]);
             }
 
-            // Execute command
+            // Check if it's a built-in command
+            if (is_builtin(pipeline->commands[i].argv[0])) {
+                exit(execute_builtin(&pipeline->commands[i]));
+            }
+
+            // External command
             execvp(pipeline->commands[i].argv[0], pipeline->commands[i].argv);
             
             // If execvp fails, print a more specific error
@@ -106,127 +115,78 @@ int execute_pipeline(Pipeline *pipeline) {
             } else {
                 perror(pipeline->commands[i].argv[0]);
             }
-            exit(127);  // Standard exit code for command not found
+            exit(EXIT_FAILURE);
         }
     }
 
-    // Close pipes in parent
-    for (int i = 0; i < pipeline->num_commands - 1; i++) {
+    // Parent process: close all pipe file descriptors
+    for (int i = 0; i < pipeline->command_count - 1; i++) {
         close(pipes[i][0]);
         close(pipes[i][1]);
     }
 
-    // Close input/output files
-    if (pipeline->input_file != stdin) {
-        fclose(pipeline->input_file);
-    }
-    if (pipeline->output_file != stdout) {
-        fclose(pipeline->output_file);
-    }
-
-    // Wait for children
+    // Wait for all child processes
     int status;
-    int exit_status = 0;
-    for (int i = 0; i < pipeline->num_commands; i++) {
-        waitpid(child_pids[i], &status, 0);
-
-        if (WIFEXITED(status)) {
-            int child_exit_status = WEXITSTATUS(status);
-            if (child_exit_status != 0) {
-                fprintf(stderr, "Child %d exited with status %d\n", 
-                        child_pids[i], child_exit_status);
-                exit_status = 2;
-            }
-        } else if (WIFSIGNALED(status)) {
-            fprintf(stderr, "Child %d killed by signal %d\n", 
-                    child_pids[i], WTERMSIG(status));
-            exit_status = 2;
+    int last_status = 0;
+    for (int i = 0; i < pipeline->command_count; i++) {
+        waitpid(pids[i], &status, 0);
+        if (i == pipeline->command_count - 1) {
+            last_status = WEXITSTATUS(status);
         }
     }
 
-    return exit_status;
+    return last_status;
 }
 
 int main() {
-    char *line;
-    
-    // Configure readline
-    // rl_bind_textvar("editing-mode", "vi");
-    // using_history();
-
+    // Setup readline
+    rl_bind_key('\t', rl_complete);
     printf("Welcome to Plaid Shell!\n");
-
-    while ((line = readline("#? ")) != NULL) {
+    while (1) {
+        char *line = readline("#? ");
+        
+        // Exit on null (Ctrl-D)
+        if (!line) {
+            printf("\n");
+            break;
+        }
         // Skip empty lines
         if (strlen(line) == 0) {
             free(line);
             continue;
         }
-
         // Add to history
         add_history(line);
-
-        // Tokenize input
+        // Tokenize
         char errmsg[256] = {0};
         CList tokens = TOK_tokenize_input(line, errmsg, sizeof(errmsg));
-
-        if (tokens == NULL) {
+        
+        if (!tokens) {
             if (strlen(errmsg) > 0) {
                 fprintf(stderr, "Tokenization error: %s\n", errmsg);
             }
             free(line);
             continue;
         }
-
-        // Special built-in commands first
-        Token first_token = TOK_next(tokens);
-        int  should_exit = 0;
-        if (strcmp(first_token.value, "exit") == 0 || 
-            strcmp(first_token.value, "quit") == 0) {
-            should_exit = 1;
-        }
-
-        if (strcmp(first_token.value, "cd") == 0) {
-            TOK_consume(tokens);
-            Token dir_token = TOK_next(tokens);
-            char *argv[2] = {"cd", dir_token.value};
-            do_cd(dir_token.value ? 2 : 1, argv);
+        // Parse
+        Pipeline *pipeline = parse_tokens(tokens, errmsg, sizeof(errmsg));
+        
+        if (!pipeline) {
+            if (strlen(errmsg) > 0) {
+                fprintf(stderr, "Parsing error: %s\n", errmsg);
+            }
             free_token_values(tokens);
             free(line);
             continue;
         }
-
-        if (strcmp(first_token.value, "pwd") == 0) {
-            do_pwd();
-            free_token_values(tokens);
-            free(line);
-            continue;
-        }
-
-        if (strcmp(first_token.value, "author") == 0) {
-            do_author();
-            free_token_values(tokens);
-            free(line);
-            continue;
-        }
-
-        // Parse and execute pipeline
-        if (!should_exit) {
-            Pipeline *pipeline = parse_tokens(tokens);
-            if (pipeline) {
-                execute_pipeline(pipeline);
-                pipeline_free(pipeline);
-        }
-        }
-
+        
+        // Execute pipeline
+        int exit_status = execute_pipeline(pipeline);
+        
         // Cleanup
+        pipeline_free(pipeline);
         free_token_values(tokens);
         free(line);
-
-        if (should_exit) {
-            break;
-        }
     }
-
     return 0;
 }

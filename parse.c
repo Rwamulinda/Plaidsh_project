@@ -2,114 +2,120 @@
 #include <string.h>
 #include <glob.h>
 #include "parse.h"
-#include "pipeline.h"
+#include "tokenize.h"
 
-char **perform_globbing(char *pattern) {
-    glob_t globresult;
-    int rc;
-    char **expanded_args = NULL;
-    int count = 0;
-
-    rc = glob(pattern, GLOB_TILDE_CHECK, NULL, &globresult);
-    if (rc == 0) {
-        expanded_args = malloc((globresult.gl_pathc + 1) * sizeof(char *));
-        for (size_t i = 0; i < globresult.gl_pathc; i++) {
-            expanded_args[count++] = strdup(globresult.gl_pathv[i]);
-            
-        }
-        expanded_args[count] = NULL;
-        globfree(&globresult);
-    } else {
-        // Single expansion with duplicate of original pattern
-        expanded_args = malloc(2 * sizeof(char *));
-        expanded_args[0] = strdup(pattern);
-        expanded_args[1] = NULL;
-    }
-
-    return expanded_args;
-}
-
-void free_expanded_args(char **expanded_args) {
-    if (expanded_args) {
-        for (int i = 0; expanded_args[i] != NULL; i++) {
-            free(expanded_args[i]);
-        }
-        free(expanded_args);
-    }
-}
-
-Pipeline *parse_tokens(CList tokens) {
-    Pipeline *pipeline = pipeline_new();
-    char *command_argv[MAX_ARGS];
-    int command_argc = 0;
-    int redirect_input = 0, redirect_output = 0;
-    FILE *input_file = NULL, *output_file = NULL;
+Pipeline* parse_tokens(CList tokens, char *errmsg, size_t errmsg_sz) {
+    Pipeline *pipeline = pipeline_create();
+    Command *current_command = NULL;
+    int input_redirected = 0;
+    int output_redirected = 0;
 
     while (TOK_next_type(tokens) != TOK_END) {
         Token token = TOK_next(tokens);
-        char **expanded_args = NULL;
 
         switch (token.type) {
             case TOK_WORD:
-            case TOK_QUOTED_WORD: {
-                // Perform globbing for non-quoted words
-                 expanded_args = (token.type == TOK_WORD) ? 
-                    perform_globbing(token.value) : malloc(2 * sizeof(char *));
+            case TOK_QUOTED_WORD:
+                // Start a new command if needed
+                if (!current_command) {
+                    current_command = command_create();
+                }
                 
-                if (token.type == TOK_QUOTED_WORD) {
-                    expanded_args[0] = strdup(token.value);
-                    expanded_args[1] = NULL;
-                }
-
-                // Add expanded arguments to current command
-                for (int i = 0; expanded_args[i] != NULL; i++) {
-                    if (command_argc < MAX_ARGS - 1) {
-                        command_argv[command_argc++] = expanded_args[i];
+                // Handle globbing for non-quoted words
+                if (token.type == TOK_WORD) {
+                    glob_t globbuf;
+                    int glob_result = glob(token.value, GLOB_TILDE_CHECK, NULL, &globbuf);
+                    
+                    if (glob_result == 0) {
+                        // Add globbed files
+                        for (size_t i = 0; i < globbuf.gl_pathc; i++) {
+                            command_add_arg(current_command, globbuf.gl_pathv[i]);
+                        }
+                        globfree(&globbuf);
+                    } else {
+                        // If no glob match, add the original word
+                        command_add_arg(current_command, token.value);
                     }
+                } else {
+                    // For quoted words, add as-is
+                    command_add_arg(current_command, token.value);
                 }
-                free(expanded_args);
                 break;
-            }
-            case TOK_LESSTHAN: {
+
+            case TOK_LESSTHAN:
+                // Input redirection
+                if (input_redirected) {
+                    snprintf(errmsg, errmsg_sz, "Multiple input redirections not allowed");
+                    pipeline_free(pipeline);
+                    return NULL;
+                }
                 TOK_consume(tokens);
-                token = TOK_next(tokens);
-                input_file = fopen(token.value, "r");
-                redirect_input = 1;
+                
+                if (TOK_next_type(tokens) != TOK_WORD && TOK_next_type(tokens) != TOK_QUOTED_WORD) {
+                    snprintf(errmsg, errmsg_sz, "Expected filename after input redirection");
+                    pipeline_free(pipeline);
+                    return NULL;
+                }
+                
+                FILE *input_file = fopen(TOK_next(tokens).value, "r");
+                if (!input_file) {
+                    snprintf(errmsg, errmsg_sz, "Cannot open input file: %s", TOK_next(tokens).value);
+                    pipeline_free(pipeline);
+                    return NULL;
+                }
+                pipeline_set_input(pipeline, input_file);
+                input_redirected = 1;
                 break;
-            }
-            case TOK_GREATERTHAN: {
+
+            case TOK_GREATERTHAN:
+                // Output redirection
+                if (output_redirected) {
+                    snprintf(errmsg, errmsg_sz, "Multiple output redirections not allowed");
+                    pipeline_free(pipeline);
+                    return NULL;
+                }
                 TOK_consume(tokens);
-                token = TOK_next(tokens);
-                output_file = fopen(token.value, "w");
-                redirect_output = 1;
+                
+                if (TOK_next_type(tokens) != TOK_WORD && TOK_next_type(tokens) != TOK_QUOTED_WORD) {
+                    snprintf(errmsg, errmsg_sz, "Expected filename after output redirection");
+                    pipeline_free(pipeline);
+                    return NULL;
+                }
+                
+                FILE *output_file = fopen(TOK_next(tokens).value, "w");
+                if (!output_file) {
+                    snprintf(errmsg, errmsg_sz, "Cannot open output file: %s", TOK_next(tokens).value);
+                    pipeline_free(pipeline);
+                    return NULL;
+                }
+                pipeline_set_output(pipeline, output_file);
+                output_redirected = 1;
                 break;
-            }
-            case TOK_PIPE: {
-                // Add current command to pipeline and start a new command
-                command_argv[command_argc] = NULL;
-                pipeline_add_command(pipeline, command_argv, command_argc);
-                command_argc = 0;
+
+            case TOK_PIPE:
+                // Add current command to pipeline and prepare for next command
+                if (!current_command) {
+                    snprintf(errmsg, errmsg_sz, "Unexpected pipe");
+                    pipeline_free(pipeline);
+                    return NULL;
+                }
+                pipeline_add_command(pipeline, current_command);
+                current_command = NULL;
                 break;
-            }
+
             default:
-                break;
+                snprintf(errmsg, errmsg_sz, "Unexpected token type");
+                pipeline_free(pipeline);
+                return NULL;
         }
 
+        // Consume the current token
         TOK_consume(tokens);
     }
 
-    // Add last command
-    if (command_argc > 0) {
-        command_argv[command_argc] = NULL;
-        pipeline_add_command(pipeline, command_argv, command_argc);
-    }
-
-    // Set input/output files if redirected
-    if (redirect_input && input_file) {
-        pipeline_set_input(pipeline, input_file);
-    }
-    if (redirect_output && output_file) {
-        pipeline_set_output(pipeline, output_file);
+    // Add the last command if exists
+    if (current_command) {
+        pipeline_add_command(pipeline, current_command);
     }
 
     return pipeline;

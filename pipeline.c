@@ -1,48 +1,86 @@
 #include <stdlib.h>
 #include <string.h>
 #include "pipeline.h"
+#include "Tokenize.h"
+#include "clist.h"
+#include "parse.h"
 
-Pipeline *pipeline_new() {
+Pipeline* pipeline_create() {
     Pipeline *pipeline = malloc(sizeof(Pipeline));
-    if (pipeline == NULL) {
-        return NULL;
-    }
-    pipeline->num_commands = 0;
+    if (!pipeline) return NULL;
+
     pipeline->input_file = stdin;
     pipeline->output_file = stdout;
+    pipeline->commands = CL_new();
     return pipeline;
 }
 
-void pipeline_add_command(Pipeline *pipeline, char **argv, int argc) {
-    if (pipeline->num_commands >= MAX_COMMANDS) {
-        return;
-    }
-
-    Command *cmd = &pipeline->commands[pipeline->num_commands];
-    cmd->argc = argc;
-
-    for (int i = 0; i < argc; i++) {
-        cmd->argv[i] = strdup(argv[i]);
-    }
-    cmd->argv[argc] = NULL;  // NULL-terminate argv
-
-    pipeline->num_commands++;
+void pipeline_add_command(Pipeline *pipeline, Command *command) {
+    if (!pipeline || !command) return;
+    CL_append(pipeline->commands, *command);
 }
 
 void pipeline_set_input(Pipeline *pipeline, FILE *input) {
-    pipeline->input_file = input;
+    if (!pipeline) return;
+    pipeline->input_file = input ? input : stdin;
 }
 
 void pipeline_set_output(Pipeline *pipeline, FILE *output) {
-    pipeline->output_file = output;
+    if (!pipeline) return;
+    pipeline->output_file = output ? output : stdout;
 }
 
 void pipeline_free(Pipeline *pipeline) {
-    for (int i = 0; i < pipeline->num_commands; i++) {
-        Command *cmd = &pipeline->commands[i];
-        for (int j = 0; j < cmd->argc; j++) {
-            free(cmd->argv[j]);
-        }
+    if (!pipeline) return;
+
+    // Free each command in the list
+    size_t len = CL_length(pipeline->commands);
+    for (size_t i = 0; i < len; i++) {
+        Command *cmd = (Command*)& CL_nth(pipeline->commands, i);
+        command_free(cmd);
     }
+
+    // Free the commands list
+    CL_free(pipeline->commands);
+
+    // Close files if they're not stdin/stdout
+    if (pipeline->input_file && pipeline->input_file != stdin) 
+        fclose(pipeline->input_file);
+    if (pipeline->output_file && pipeline->output_file != stdout) 
+        fclose(pipeline->output_file);
+
     free(pipeline);
+}
+
+Command* command_create() {
+    Command *cmd = malloc(sizeof(Command));
+    if (!cmd) return NULL;
+
+    cmd->args = NULL;
+    cmd->arg_count = 0;
+    return cmd;
+}
+
+void command_add_arg(Command *command, const char *arg) {
+    if (!command || !arg) return;
+
+    // Reallocate args array to add new argument
+    command->args = realloc(command->args, (command->arg_count + 1) * sizeof(char*));
+    if (!command->args) return;
+
+    // Duplicate the arg string and add to args
+    command->args[command->arg_count] = strdup(arg);
+    command->arg_count++;
+}
+
+void command_free(Command *command) {
+    if (!command) return;
+
+    // Free each argument string
+    for (size_t i = 0; i < command->arg_count; i++) {
+        free(command->args[i]);
+    }
+
+    // Free the args array
+    free(command->args);
 }

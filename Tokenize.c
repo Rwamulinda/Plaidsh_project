@@ -97,7 +97,6 @@ CList TOK_tokenize_input(const char *input, char *errmsg, size_t errmsg_sz)
 
     if (input == NULL) {
         snprintf(errmsg, errmsg_sz, "Null input provided");
-        CL_free(tokens);  // Free the list if input is NULL
         return NULL;
     }
 
@@ -156,7 +155,7 @@ CList TOK_tokenize_input(const char *input, char *errmsg, size_t errmsg_sz)
                     if (input[i + 1] == '\0') 
                     {
                         snprintf(errmsg, errmsg_sz, "Unterminated quote");
-                        free_token_values(tokens);  // Free all allocated tokens
+                        free_token_values(tokens);
                         return NULL;
                     }
                     
@@ -177,7 +176,7 @@ CList TOK_tokenize_input(const char *input, char *errmsg, size_t errmsg_sz)
                 if (input[i + 1] == '\0')
                 {
                     snprintf(errmsg, errmsg_sz, "Illegal escape character");
-                    free_token_values(tokens);  // Free all allocated tokens
+                    free_token_values(tokens);
                     return NULL;
                 }
 
@@ -194,7 +193,7 @@ CList TOK_tokenize_input(const char *input, char *errmsg, size_t errmsg_sz)
                     }
                     
                     snprintf(errmsg, errmsg_sz, "Illegal escape character '\\%c'", input[i + 1]);
-                    free_token_values(tokens);  // Free all allocated tokens
+                    free_token_values(tokens);
                     return NULL;
                 }
                 temp[temp_idx++] = escaped;
@@ -211,15 +210,6 @@ CList TOK_tokenize_input(const char *input, char *errmsg, size_t errmsg_sz)
         if (temp_idx > 0)
         {
             temp[temp_idx] = '\0';
-
-            // Validate token creation
-            token.value = strdup(temp);
-            if (token.value == NULL)
-            {
-              snprintf(errmsg, errmsg_sz, "Memory allocation failed");
-              free_token_values(tokens); // Free all previously allocated tokens
-              return NULL;
-            }
             
             // Determine token type
             if (is_quoted || had_quote)
@@ -232,7 +222,7 @@ CList TOK_tokenize_input(const char *input, char *errmsg, size_t errmsg_sz)
             }
             
             token.value = strdup(temp);
-            //CL_append(tokens, token);
+            CL_append(tokens, token);
         }
     }
 
