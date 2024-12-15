@@ -99,6 +99,15 @@ CList TOK_tokenize_input(const char *input, char *errmsg, size_t errmsg_sz)
         {
             if (input[i] == '"') // Start or end of a quoted word
             {
+                if (is_quoted)
+                {
+                    // End of quoted word
+                    token.type = TOK_QUOTED_WORD;
+                    buffer[buf_idx] = '\0';
+                    token.value = strdup(buffer);
+                    CL_append(tokens, token);
+                    buf_idx = 0; // Reset buffer for next token
+                }
                 is_quoted = !is_quoted;
                 i++;
                 continue;
@@ -124,6 +133,7 @@ CList TOK_tokenize_input(const char *input, char *errmsg, size_t errmsg_sz)
                 }
                 buffer[buf_idx++] = escaped;
                 i += 2;
+                continue;
             }
             else // Regular character
             {
@@ -138,18 +148,18 @@ CList TOK_tokenize_input(const char *input, char *errmsg, size_t errmsg_sz)
             }
         }
 
-        if (is_quoted) // Unterminated quote
-        {
-            snprintf(errmsg, errmsg_sz, "Unterminated quote");
-            free_token_values(tokens);
-            return NULL;
-        }
-
-        // Create token
+        // Add the last token if any
         if (buf_idx > 0)
         {
             buffer[buf_idx] = '\0';
-            token.type = is_quoted ? TOK_QUOTED_WORD : TOK_WORD;
+            if (is_quoted)
+            {
+                token.type = TOK_QUOTED_WORD;
+            }
+            else
+            {
+                token.type = TOK_WORD;
+            }
             token.value = strdup(buffer);
             CL_append(tokens, token);
         }
