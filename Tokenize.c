@@ -124,7 +124,7 @@ CList TOK_tokenize_input(const char *input, char *errmsg, size_t errmsg_sz)
 
         char buffer[256];
         size_t buf_idx = 0;
-        int is_quoted = 0;
+        //int is_quoted = 0;
 
         // Process quoted and unquoted tokens
         if (input[i] == '"') // Start of a quoted word
