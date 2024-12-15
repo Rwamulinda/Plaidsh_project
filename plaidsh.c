@@ -31,38 +31,42 @@ int is_builtin(const char *command) {
 
 // Execute built-in commands
 int execute_builtin(Command *cmd) {
-    if (strcmp(cmd->argv[0], "author") == 0) {
+    if (strcmp(cmd->args[0], "author") == 0) {
         do_author();
         return 0;
-    } else if (strcmp(cmd->argv[0], "cd") == 0) {
-        return do_cd(cmd->argv[1]);
-    } else if (strcmp(cmd->argv[0], "pwd") == 0) {
+    } else if (strcmp(cmd->args[0], "cd") == 0) {
+        return do_cd(cmd->args[1]);
+    } else if (strcmp(cmd->args[0], "pwd") == 0) {
         do_pwd();
         return 0;
-    } else if (strcmp(cmd->argv[0], "exit") == 0) {
+    } else if (strcmp(cmd->args[0], "exit") == 0) {
         // Exit with status 0 by default, or use provided status
-        int status = cmd->argv[1] ? atoi(cmd->argv[1]) : 0;
+        int status = cmd->arg_count > 1 ? atoi(cmd->args[1]) : 0;
         do_exit(status);
     }
     return -1;
 }
 
 int execute_pipeline(Pipeline *pipeline) {
-    if (!pipeline || pipeline->command_count == 0) {
+    if (!pipeline || pipeline_command_count(pipeline) == 0) {
         return -1;
     }
 
     // Handle single built-in command case
-    if (pipeline->command_count == 1 && is_builtin(pipeline->commands[0].argv[0])) {
-        return execute_builtin(&pipeline->commands[0]);
+    if (pipeline_command_count(pipeline) == 1) {
+        Command *cmd = pipeline_get_command(pipeline, 0);
+        if (is_builtin(cmd->args[0])) {
+            return execute_builtin(cmd);
+        }
     }
 
     // Prepare for pipeline execution
-    int pipes[pipeline->command_count - 1][2];
-    pid_t pids[pipeline->command_count];
+    size_t command_count = pipeline_command_count(pipeline);
+    int pipes[command_count - 1][2];
+    pid_t pids[command_count];
 
     // Create pipes between commands
-    for (int i = 0; i < pipeline->command_count - 1; i++) {
+    for (size_t i = 0; i < command_count - 1; i++) {
         if (pipe(pipes[i]) == -1) {
             perror("pipe");
             return -1;
@@ -70,7 +74,9 @@ int execute_pipeline(Pipeline *pipeline) {
     }
 
     // Fork and execute each command
-    for (int i = 0; i < pipeline->command_count; i++) {
+    for (size_t i = 0; i < command_count; i++) {
+        Command *cmd = pipeline_get_command(pipeline, i);
+        
         pids[i] = fork();
 
         if (pids[i] == -1) {
@@ -88,7 +94,7 @@ int execute_pipeline(Pipeline *pipeline) {
             }
 
             // Handle output redirection
-            if (i < pipeline->command_count - 1) {
+            if (i < command_count - 1) {
                 if (dup2(pipes[i][1], STDOUT_FILENO) == -1) {
                     perror("dup2 output");
                     exit(EXIT_FAILURE);
@@ -96,31 +102,35 @@ int execute_pipeline(Pipeline *pipeline) {
             }
 
             // Close all pipe fds
-            for (int j = 0; j < pipeline->command_count - 1; j++) {
+            for (size_t j = 0; j < command_count - 1; j++) {
                 close(pipes[j][0]);
                 close(pipes[j][1]);
             }
 
             // Check if it's a built-in command
-            if (is_builtin(pipeline->commands[i].argv[0])) {
-                exit(execute_builtin(&pipeline->commands[i]));
+            if (is_builtin(cmd->args[0])) {
+                exit(execute_builtin(cmd));
             }
 
             // External command
-            execvp(pipeline->commands[i].argv[0], pipeline->commands[i].argv);
+            // Ensure args array is null-terminated for execvp
+            char **exec_args = realloc(cmd->args, (cmd->arg_count + 1) * sizeof(char*));
+            exec_args[cmd->arg_count] = NULL;
+
+            execvp(exec_args[0], exec_args);
             
             // If execvp fails, print a more specific error
             if (errno == ENOENT) {
-                fprintf(stderr, "%s: Command not found\n", pipeline->commands[i].argv[0]);
+                fprintf(stderr, "%s: Command not found\n", exec_args[0]);
             } else {
-                perror(pipeline->commands[i].argv[0]);
+                perror(exec_args[0]);
             }
             exit(EXIT_FAILURE);
         }
     }
 
     // Parent process: close all pipe file descriptors
-    for (int i = 0; i < pipeline->command_count - 1; i++) {
+    for (size_t i = 0; i < command_count - 1; i++) {
         close(pipes[i][0]);
         close(pipes[i][1]);
     }
@@ -128,9 +138,9 @@ int execute_pipeline(Pipeline *pipeline) {
     // Wait for all child processes
     int status;
     int last_status = 0;
-    for (int i = 0; i < pipeline->command_count; i++) {
+    for (size_t i = 0; i < command_count; i++) {
         waitpid(pids[i], &status, 0);
-        if (i == pipeline->command_count - 1) {
+        if (i == command_count - 1) {
             last_status = WEXITSTATUS(status);
         }
     }
