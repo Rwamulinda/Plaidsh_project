@@ -7,7 +7,7 @@
 
 int main() {
     printf(" Welocme to Plaid shell\n");
-    printf("Type 'exit' to quit.\n\n");
+    //printf("Type 'exit' to quit.\n\n");
 
     while (1) {
         // Display the prompt with bold red color
