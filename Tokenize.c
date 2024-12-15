@@ -255,7 +255,7 @@ void printToken(int pos, CListElementType element, void *cb_data)
 {
     if (element.type == TOK_WORD || element.type == TOK_QUOTED_WORD)
     {
-        printf("Position %d: Token type: %s, Text: %s\n", pos, TT_to_str(element.type), element.value);
+        printf("Position %d: Token type: %s, %s\n", pos, TT_to_str(element.type), element.value);
     }
     else
     {
