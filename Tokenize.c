@@ -43,6 +43,7 @@ const char *TT_to_str(TokenType tt)
     __builtin_unreachable();
 }
 
+// Modified handle_escape_sequence to check for allowed escape sequences
 char handle_escape_sequence(char next_char, char *errmsg, size_t errmsg_sz)
 {
     switch (next_char)
@@ -58,7 +59,7 @@ char handle_escape_sequence(char next_char, char *errmsg, size_t errmsg_sz)
     case '\\':
         return '\\'; // Backslash
     case ' ':
-        return ' '; // Space
+        return ' '; // Space (allowed after backslash)
     case '|':
         return '|'; // Pipe
     case '<':
@@ -66,31 +67,13 @@ char handle_escape_sequence(char next_char, char *errmsg, size_t errmsg_sz)
     case '>':
         return '>'; // Greater than
     default:
+        // Report error for illegal escape sequences
         snprintf(errmsg, errmsg_sz, "Unrecognized escape sequence: \\%c", next_char);
         return '\0'; // Indicate an error
     }
 }
 
-// This function checks if the current character marks the end of a word
-int is_at_end(const char current)
-{
-    // Check if it's one of the special characters (unescaped <, >, |, " or space)
-    if (current == '<' || current == '>' || current == '|' || current == '"')
-        return 1; // End of word
-
-    // Check for unescaped whitespace
-    if (isspace(current))
-        return 1; // End of word
-
-    // Check if we are at the end of the input string
-    if (current == '\0')
-        return 1; // End of word
-
-    return 0; // Not at the end of the word yet
-}
-
-// Documented in .h file
-// Tokenizes the input string into a list of tokens
+// Modified TOK_tokenize_input to handle illegal backslash escape cases
 CList TOK_tokenize_input(const char *input, char *errmsg, size_t errmsg_sz)
 {
     CList tokens = CL_new();
@@ -122,9 +105,35 @@ CList TOK_tokenize_input(const char *input, char *errmsg, size_t errmsg_sz)
             continue;
         }
 
+        // Check for escape sequences
+        if (input[i] == '\\') // Backslash detected, check the next character
+        {
+            if (input[i + 1] == '\0') // If the backslash is the last character, it's an error
+            {
+                snprintf(errmsg, errmsg_sz, "Trailing backslash at the end of input");
+                free_token_values(tokens);
+                return NULL;
+            }
+
+            // Process the escape sequence (next character after the backslash)
+            char next_char = input[i + 1];
+            char result = handle_escape_sequence(next_char, errmsg, errmsg_sz);
+
+            if (result == '\0') // If handle_escape_sequence returns '\0', there's an error
+            {
+                free_token_values(tokens);
+                return NULL;
+            }
+
+            token.type = TOK_WORD; // Treat the result as a valid token
+            token.value = strndup(&result, 1); // Copy the escaped character
+            CL_append(tokens, token);
+            i += 2; // Move past the backslash and the escaped character
+            continue;
+        }
+
         char buffer[256];
         size_t buf_idx = 0;
-        //int is_quoted = 0;
 
         // Process quoted and unquoted tokens
         if (input[i] == '"') // Start of a quoted word
