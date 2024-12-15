@@ -222,7 +222,7 @@ int main() {
         }
         
         // Execute pipeline
-        int exit_status = execute_pipeline(pipeline);
+        //int exit_status = execute_pipeline(pipeline);
         
         // Cleanup
         pipeline_free(pipeline);
